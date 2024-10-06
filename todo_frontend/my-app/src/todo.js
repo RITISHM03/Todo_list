@@ -77,7 +77,7 @@ export default function Todo() {
                 if (res.ok) {
                     //update item to list
                     const updatedTodos = todos.map((item) => {
-                        if (item._id = editId) {
+                        if (item._id === editId) {
                             item.title = editTitle;
                             item.description = editDescription;
                         }
