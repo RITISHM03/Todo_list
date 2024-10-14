@@ -8,7 +8,7 @@ const app = express();
 app.use(express.json())
 app.use(cors(
     {
-        origin: ["https://deploy-mern-1whq.vercel.app"],
+        origin: ["https://todo-list-two-lac.vercel.app/"],
         methods:["POST","GET"],
         Credentials: true    
         
