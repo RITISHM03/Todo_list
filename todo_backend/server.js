@@ -6,14 +6,7 @@ const cors = require('cors')
 //create an instance of express
 const app = express();
 app.use(express.json())
-app.use(cors(
-    {
-        origin: ["https://todo-list-two-lac.vercel.app/"],
-        methods:["POST","GET"],
-        Credentials: true    
-        
-    }
-));
+app.use(cors());
 
 //Sample in-memory storage for todo items
 // let todos = [];
