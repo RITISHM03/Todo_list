@@ -4,20 +4,12 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
 
-// Debug environment variables
-console.log('Starting server...');
-console.log('Environment check:', {
-    NODE_ENV: process.env.NODE_ENV,
-    MONGODB_URI: process.env.MONGODB_URI ? 'Set (hidden)' : 'Not set',
-    PORT: process.env.PORT || 3001
-});
-
 //create an instance of express
 const app = express();
 
 // CORS configuration
 app.use(cors({
-    origin: '*',  // Allow all origins for Vercel deployment
+    origin: ['http://localhost:3000', 'http://localhost:3001'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type']
 }));
@@ -32,33 +24,20 @@ app.use((err, req, res, next) => {
     next();
 });
 
-//Sample in-memory storage for todo items
-// let todos = [];
-
 // MongoDB Atlas connection URL
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ritishm07:ritishrockz@todolist.j7ghe.mongodb.net/todo-app?retryWrites=true&w=majority';
 
-let cachedDb = null;
+console.log('Attempting to connect to MongoDB...');
 
-// Function to connect to MongoDB
-async function connectToDatabase() {
-    if (cachedDb) {
-        return cachedDb;
-    }
-    
-    try {
-        const db = await mongoose.connect(MONGODB_URI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true
-        });
-        
-        cachedDb = db;
-        return db;
-    } catch (error) {
-        console.error('MongoDB connection error:', error);
-        throw error;
-    }
-}
+// connecting mongodb with error handling
+mongoose.connect(MONGODB_URI)
+.then(() => {
+    console.log('Successfully connected to MongoDB Atlas.');
+})
+.catch((err) => {
+    console.error('Error connecting to MongoDB:', err);
+    process.exit(1);
+});
 
 //creating schema
 const todoSchema = new mongoose.Schema({
@@ -75,19 +54,13 @@ const todoSchema = new mongoose.Schema({
 const todoModel = mongoose.model('Todo', todoSchema);
 
 // Health check endpoint
-app.get('/', async (req, res) => {
-    try {
-        await connectToDatabase();
-        res.json({ message: 'Server is running', status: 'connected' });
-    } catch (error) {
-        res.status(500).json({ message: 'Database connection error', error: error.message });
-    }
+app.get('/', (req, res) => {
+    res.json({ message: 'Server is running' });
 });
 
 //Create a new todo item
 app.post('/todos', async (req, res) => {
     try {
-        await connectToDatabase();
         const {title, description} = req.body;
         
         if (!title || typeof title !== 'string') {
@@ -100,6 +73,7 @@ app.post('/todos', async (req, res) => {
         });
         
         const savedTodo = await newTodo.save();
+        console.log('Created todo:', savedTodo);
         res.status(201).json(savedTodo);
     } catch (error) {
         console.error('Error creating todo:', error);
@@ -110,7 +84,6 @@ app.post('/todos', async (req, res) => {
 //Get all items
 app.get('/todos', async (req, res) => {
     try {
-        await connectToDatabase();
         const todos = await todoModel.find().sort({ createdAt: -1 });
         res.json(todos);
     } catch (error) {
@@ -122,7 +95,6 @@ app.get('/todos', async (req, res) => {
 // Update a todo item
 app.put("/todos/:id", async (req, res) => {
     try {
-        await connectToDatabase();
         const {title, description} = req.body;
         const id = req.params.id;
         
@@ -149,7 +121,6 @@ app.put("/todos/:id", async (req, res) => {
 // Delete a todo item
 app.delete('/todos/:id', async (req, res) => {
     try {
-        await connectToDatabase();
         const id = req.params.id;
         const deletedTodo = await todoModel.findByIdAndDelete(id);
         if (!deletedTodo) {
@@ -162,28 +133,34 @@ app.delete('/todos/:id', async (req, res) => {
     }
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error('Global error handler:', err);
-    res.status(500).json({ 
-        message: 'Something broke!',
-        error: process.env.NODE_ENV === 'development' ? err.message : 'Internal Server Error'
-    });
-});
-
-// Handle 404
-app.use((req, res) => {
-    res.status(404).json({ message: 'Route not found' });
-});
-
-// Only start the server if we're not in a Vercel environment
-if (process.env.NODE_ENV !== 'production') {
+// Start server with error handling
+const startServer = () => {
     const port = process.env.PORT || 3001;
-    app.listen(port, () => {
+    const server = app.listen(port, () => {
         console.log("Server is listening to port " + port);
         console.log("Test the API at http://localhost:" + port);
     });
-}
 
-// Export the app for Vercel
-module.exports = app;
+    server.on('error', (error) => {
+        if (error.code === 'EADDRINUSE') {
+            console.log(`Port ${port} is busy. Trying port ${port + 1}`);
+            server.close();
+            app.listen(port + 1, () => {
+                console.log(`Server is now listening on port ${port + 1}`);
+                console.log(`Test the API at http://localhost:${port + 1}`);
+            });
+        } else {
+            console.error('Server error:', error);
+        }
+    });
+
+    // Handle graceful shutdown
+    process.on('SIGTERM', () => {
+        server.close(() => {
+            console.log('Server closed');
+            mongoose.connection.close();
+        });
+    });
+};
+
+startServer();
