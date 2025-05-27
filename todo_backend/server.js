@@ -6,8 +6,9 @@ require('dotenv').config();
 
 // Debug environment variables
 console.log('Starting server...');
-console.log('Environment variables:', {
-    MONGODB_URI: process.env.MONGODB_URI ? 'Set (hidden for security)' : 'Not set',
+console.log('Environment check:', {
+    NODE_ENV: process.env.NODE_ENV,
+    MONGODB_URI: process.env.MONGODB_URI ? 'Set (hidden)' : 'Not set',
     PORT: process.env.PORT || 3001
 });
 
@@ -16,7 +17,7 @@ const app = express();
 
 // CORS configuration
 app.use(cors({
-    origin: '*',  // Allow all origins in development - customize this in production
+    origin: ['http://localhost:3000', 'http://localhost:3001'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type']
 }));
@@ -34,70 +35,20 @@ app.use((err, req, res, next) => {
 //Sample in-memory storage for todo items
 // let todos = [];
 
-// MongoDB Atlas connection URL with fallback
-const MONGODB_URI = process.env.MONGODB_URI;
+// MongoDB Atlas connection URL
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ritishm07:ritishrockz@todolist.j7ghe.mongodb.net/todo-app?retryWrites=true&w=majority';
 
-if (!MONGODB_URI) {
-    console.error('FATAL ERROR: MONGODB_URI is not defined in environment variables');
-    throw new Error('MONGODB_URI is not defined');
-}
+console.log('Attempting to connect to MongoDB...');
 
-// MongoDB connection options
-const mongooseOptions = {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 10000, // Timeout after 10 seconds
-    socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-    family: 4, // Use IPv4, skip trying IPv6
-    maxPoolSize: 10,
-    retryWrites: true
-};
-
-// Function to connect to MongoDB
-const connectDB = async () => {
-    try {
-        console.log('Attempting to connect to MongoDB...');
-        await mongoose.connect(MONGODB_URI, mongooseOptions);
-        console.log('Successfully connected to MongoDB Atlas');
-    } catch (err) {
-        console.error('MongoDB Connection Error:', {
-            name: err.name,
-            message: err.message,
-            code: err.code
-        });
-        // In production, we want to keep trying to connect
-        if (process.env.NODE_ENV === 'production') {
-            console.log('Retrying connection in 5 seconds...');
-            setTimeout(connectDB, 5000);
-        } else {
-            throw err;
-        }
-    }
-};
-
-// Handle connection events
-mongoose.connection.on('connected', () => {
-    console.log('MongoDB connection established');
+// connecting mongodb with error handling
+mongoose.connect(MONGODB_URI)
+.then(() => {
+    console.log('Successfully connected to MongoDB Atlas.');
+})
+.catch((err) => {
+    console.error('Error connecting to MongoDB:', err);
+    process.exit(1);
 });
-
-mongoose.connection.on('disconnected', () => {
-    console.log('MongoDB connection disconnected');
-    if (process.env.NODE_ENV === 'production') {
-        console.log('Attempting to reconnect to MongoDB...');
-        setTimeout(connectDB, 5000);
-    }
-});
-
-mongoose.connection.on('error', (err) => {
-    console.error('MongoDB connection error:', err);
-    if (process.env.NODE_ENV === 'production') {
-        console.log('Attempting to reconnect to MongoDB...');
-        setTimeout(connectDB, 5000);
-    }
-});
-
-// Initial connection
-connectDB().catch(console.error);
 
 //creating schema
 const todoSchema = new mongoose.Schema({
@@ -113,14 +64,9 @@ const todoSchema = new mongoose.Schema({
 //creating model
 const todoModel = mongoose.model('Todo', todoSchema);
 
-// Health check endpoint with detailed status
+// Health check endpoint
 app.get('/', (req, res) => {
-    res.json({ 
-        status: 'healthy',
-        message: 'Server is running',
-        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-        timestamp: new Date().toISOString()
-    });
+    res.json({ message: 'Server is running' });
 });
 
 //Create a new todo item
