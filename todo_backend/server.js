@@ -1,24 +1,40 @@
 //Using Express
 const express = require('express');
 const mongoose = require('mongoose');
-const cors = require('cors')
+const cors = require('cors');
 
 //create an instance of express
 const app = express();
-app.use(express.json())
-app.use(cors())
+
+// CORS configuration
+app.use(cors({
+    origin: ['http://localhost:3000', 'http://localhost:3001'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type']
+}));
+
+app.use(express.json());
+
+// Add error handling middleware for JSON parsing
+app.use((err, req, res, next) => {
+    if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+        return res.status(400).json({ message: 'Invalid JSON' });
+    }
+    next();
+});
 
 //Sample in-memory storage for todo items
 // let todos = [];
 
 // connecting mongodb
-mongoose.connect('mongodb://localhost:27017/mern-app')
+mongoose.connect('mongodb://127.0.0.1:27017/mern-app')
 .then(() => {
-    console.log('DB Connected!')
+    console.log('Successfully connected to MongoDB.');
 })
 .catch((err) => {
-    console.log(err);
-})
+    console.error('Error connecting to MongoDB:', err);
+    process.exit(1);
+});
 
 //creating schema
 const todoSchema = new mongoose.Schema({
@@ -27,82 +43,133 @@ const todoSchema = new mongoose.Schema({
         type: String
     },
     description: String
-})
+}, {
+    timestamps: true
+});
 
 //creating model
 const todoModel = mongoose.model('Todo', todoSchema);
 
+// Health check endpoint
+app.get('/', (req, res) => {
+    res.json({ message: 'Server is running' });
+});
+
 //Create a new todo item
 app.post('/todos', async (req, res) => {
-    const {title, description} = req.body;
-    // const newTodo = {
-    //     id: todos.length + 1,
-    //     title,
-    //     description
-    // };
-    // todos.push(newTodo);
-    // console.log(todos);
     try {
-        const newTodo = new todoModel({title, description});
-        await newTodo.save();
-        res.status(201).json(newTodo);
+        const {title, description} = req.body;
+        
+        if (!title || typeof title !== 'string') {
+            return res.status(400).json({ message: "Title is required and must be a string" });
+        }
+        
+        const newTodo = new todoModel({
+            title: title.trim(),
+            description: description ? description.trim() : ''
+        });
+        
+        const savedTodo = await newTodo.save();
+        console.log('Created todo:', savedTodo);
+        res.status(201).json(savedTodo);
     } catch (error) {
-        console.log(error)
-        res.status(500).json({message: error.message});
+        console.error('Error creating todo:', error);
+        res.status(500).json({message: "Internal server error"});
     }
-   
-
-})
+});
 
 //Get all items
 app.get('/todos', async (req, res) => {
     try {
-        const todos = await todoModel.find();
+        const todos = await todoModel.find().sort({ createdAt: -1 });
         res.json(todos);
     } catch (error) {
-        console.log(error)
-        res.status(500).json({message: error.message});
+        console.error('Error fetching todos:', error);
+        res.status(500).json({message: "Internal server error"});
     }
-})
+});
 
 // Update a todo item
 app.put("/todos/:id", async (req, res) => {
     try {
         const {title, description} = req.body;
         const id = req.params.id;
+        
+        if (!title) {
+            return res.status(400).json({ message: "Title is required" });
+        }
+
         const updatedTodo = await todoModel.findByIdAndUpdate(
             id,
-            { title , description},
+            { title, description },
             { new: true }
-        )
+        );
     
         if (!updatedTodo) {
-            return res.status(404).json({ message: "Todo not found"})
+            return res.status(404).json({ message: "Todo not found" });
         }
-        res.json(updatedTodo)
+        res.json(updatedTodo);
     } catch (error) {
-        console.log(error)
-        res.status(500).json({message: error.message});
+        console.error('Error updating todo:', error);
+        res.status(500).json({message: "Internal server error"});
     }
-
-
-})
+});
 
 // Delete a todo item
 app.delete('/todos/:id', async (req, res) => {
     try {
         const id = req.params.id;
-        await todoModel.findByIdAndDelete(id);
+        const deletedTodo = await todoModel.findByIdAndDelete(id);
+        if (!deletedTodo) {
+            return res.status(404).json({ message: "Todo not found" });
+        }
         res.status(204).end();    
     } catch (error) {
-        console.log(error)
-        res.status(500).json({message: error.message});
+        console.error('Error deleting todo:', error);
+        res.status(500).json({message: "Internal server error"});
     }
-   
-})
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({ message: 'Something broke!' });
+});
+
+// Handle 404
+app.use((req, res) => {
+    res.status(404).json({ message: 'Route not found' });
+});
 
 //Start the server
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-    console.log("Server is listening to port "+port);
-})
+const port = process.env.PORT || 3001;
+const server = app.listen(port, () => {
+    console.log("Server is listening to port " + port);
+    console.log("Test the API at http://localhost:" + port);
+});
+
+// Handle server errors
+server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+        console.error(`Port ${port} is already in use. Please try a different port or close the application using this port.`);
+        process.exit(1);
+    } else {
+        console.error('Server error:', error);
+        process.exit(1);
+    }
+});
+
+// Handle process termination
+process.on('SIGTERM', () => {
+    server.close(() => {
+        console.log('Server terminated');
+        mongoose.connection.close();
+    });
+});
+
+process.on('SIGINT', () => {
+    server.close(() => {
+        console.log('Server terminated');
+        mongoose.connection.close();
+    });
+});
