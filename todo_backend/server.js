@@ -5,9 +5,10 @@ const cors = require('cors');
 require('dotenv').config();
 
 // Debug environment variables
+console.log('Starting server...');
 console.log('Environment variables:', {
-    MONGODB_URI: process.env.MONGODB_URI,
-    PORT: process.env.PORT
+    MONGODB_URI: process.env.MONGODB_URI ? 'Set (hidden for security)' : 'Not set',
+    PORT: process.env.PORT || 3001
 });
 
 //create an instance of express
@@ -15,12 +16,7 @@ const app = express();
 
 // CORS configuration
 app.use(cors({
-    origin: [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        process.env.FRONTEND_URL,
-        'https://*.vercel.app'  // Allow all Vercel deployments
-    ],
+    origin: '*',  // Allow all origins in development - customize this in production
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type']
 }));
@@ -39,12 +35,21 @@ app.use((err, req, res, next) => {
 // let todos = [];
 
 // MongoDB Atlas connection URL with fallback
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ritishm07:ritishrockz@todolist.j7ghe.mongodb.net/todo-app?retryWrites=true&w=majority';
+const MONGODB_URI = process.env.MONGODB_URI;
 
-console.log('Attempting to connect to MongoDB with URI:', MONGODB_URI);
+if (!MONGODB_URI) {
+    console.error('MONGODB_URI is not defined in environment variables');
+    process.exit(1);
+}
+
+console.log('Attempting to connect to MongoDB...');
 
 // connecting mongodb with error handling
-mongoose.connect(MONGODB_URI)
+mongoose.connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000 // Timeout after 5s instead of 30s
+})
 .then(() => {
     console.log('Successfully connected to MongoDB Atlas.');
 })
@@ -67,9 +72,14 @@ const todoSchema = new mongoose.Schema({
 //creating model
 const todoModel = mongoose.model('Todo', todoSchema);
 
-// Health check endpoint
+// Health check endpoint with detailed status
 app.get('/', (req, res) => {
-    res.json({ message: 'Server is running' });
+    res.json({ 
+        status: 'healthy',
+        message: 'Server is running',
+        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+        timestamp: new Date().toISOString()
+    });
 });
 
 //Create a new todo item
@@ -149,8 +159,11 @@ app.delete('/todos/:id', async (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ message: 'Something broke!' });
+    console.error('Global error handler:', err);
+    res.status(500).json({ 
+        message: 'Something broke!',
+        error: process.env.NODE_ENV === 'development' ? err.message : 'Internal Server Error'
+    });
 });
 
 // Handle 404
@@ -160,33 +173,14 @@ app.use((req, res) => {
 
 //Start the server
 const port = process.env.PORT || 3001;
-const server = app.listen(port, '0.0.0.0', () => {
-    console.log("Server is listening to port " + port);
-    console.log("Test the API at http://localhost:" + port);
-});
 
-// Handle server errors
-server.on('error', (error) => {
-    if (error.code === 'EADDRINUSE') {
-        console.error(`Port ${port} is already in use. Please try a different port or close the application using this port.`);
-        process.exit(1);
-    } else {
-        console.error('Server error:', error);
-        process.exit(1);
-    }
-});
-
-// Handle process termination
-process.on('SIGTERM', () => {
-    server.close(() => {
-        console.log('Server terminated');
-        mongoose.connection.close();
+// For Vercel, we only start the server if we're running locally
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(port, '0.0.0.0', () => {
+        console.log("Server is listening to port " + port);
+        console.log("Test the API at http://localhost:" + port);
     });
-});
+}
 
-process.on('SIGINT', () => {
-    server.close(() => {
-        console.log('Server terminated');
-        mongoose.connection.close();
-    });
-});
+// Export the app for Vercel
+module.exports = app;
