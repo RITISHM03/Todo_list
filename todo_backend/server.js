@@ -2,13 +2,25 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+require('dotenv').config();
+
+// Debug environment variables
+console.log('Environment variables:', {
+    MONGODB_URI: process.env.MONGODB_URI,
+    PORT: process.env.PORT
+});
 
 //create an instance of express
 const app = express();
 
 // CORS configuration
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'],
+    origin: [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        process.env.FRONTEND_URL,
+        'https://*.vercel.app'  // Allow all Vercel deployments
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type']
 }));
@@ -26,10 +38,15 @@ app.use((err, req, res, next) => {
 //Sample in-memory storage for todo items
 // let todos = [];
 
-// connecting mongodb
-mongoose.connect('mongodb://127.0.0.1:27017/mern-app')
+// MongoDB Atlas connection URL with fallback
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ritishm07:ritishrockz@todolist.j7ghe.mongodb.net/todo-app?retryWrites=true&w=majority';
+
+console.log('Attempting to connect to MongoDB with URI:', MONGODB_URI);
+
+// connecting mongodb with error handling
+mongoose.connect(MONGODB_URI)
 .then(() => {
-    console.log('Successfully connected to MongoDB.');
+    console.log('Successfully connected to MongoDB Atlas.');
 })
 .catch((err) => {
     console.error('Error connecting to MongoDB:', err);
@@ -143,7 +160,7 @@ app.use((req, res) => {
 
 //Start the server
 const port = process.env.PORT || 3001;
-const server = app.listen(port, () => {
+const server = app.listen(port, '0.0.0.0', () => {
     console.log("Server is listening to port " + port);
     console.log("Test the API at http://localhost:" + port);
 });

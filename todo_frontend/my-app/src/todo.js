@@ -14,7 +14,7 @@ export default function Todo() {
     const [editTitle, setEditTitle] = useState("");
     const [editDescription, setEditDescription] = useState("");
 
-    const apiUrl = "http://localhost:3001"
+    const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:3001";
     
     const handleSubmit = async () => {
         if (!title.trim()) {
