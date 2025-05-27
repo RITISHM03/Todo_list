@@ -46,7 +46,7 @@ export default function Todo() {
             setTodos([newTodo, ...todos]);
             setTitle("");
             setDescription("");
-            setMessage("Item added successfully");
+            setMessage("Task added successfully");
             setTimeout(() => setMessage(""), 3000);
         } catch (err) {
             console.error('Error creating todo:', err);
