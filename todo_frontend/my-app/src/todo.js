@@ -115,7 +115,7 @@ export default function Todo() {
             setTodos(updatedTodos);
             setEditTitle("");
             setEditDescription("");
-            setMessage("Item updated successfully");
+            setMessage("Task updated successfully");
             setTimeout(() => setMessage(""), 3000);
             setEditId(-1);
         } catch (err) {
