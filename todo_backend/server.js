@@ -38,25 +38,66 @@ app.use((err, req, res, next) => {
 const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
-    console.error('MONGODB_URI is not defined in environment variables');
-    process.exit(1);
+    console.error('FATAL ERROR: MONGODB_URI is not defined in environment variables');
+    throw new Error('MONGODB_URI is not defined');
 }
 
-console.log('Attempting to connect to MongoDB...');
-
-// connecting mongodb with error handling
-mongoose.connect(MONGODB_URI, {
+// MongoDB connection options
+const mongooseOptions = {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000 // Timeout after 5s instead of 30s
-})
-.then(() => {
-    console.log('Successfully connected to MongoDB Atlas.');
-})
-.catch((err) => {
-    console.error('Error connecting to MongoDB:', err);
-    process.exit(1);
+    serverSelectionTimeoutMS: 10000, // Timeout after 10 seconds
+    socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+    family: 4, // Use IPv4, skip trying IPv6
+    maxPoolSize: 10,
+    retryWrites: true
+};
+
+// Function to connect to MongoDB
+const connectDB = async () => {
+    try {
+        console.log('Attempting to connect to MongoDB...');
+        await mongoose.connect(MONGODB_URI, mongooseOptions);
+        console.log('Successfully connected to MongoDB Atlas');
+    } catch (err) {
+        console.error('MongoDB Connection Error:', {
+            name: err.name,
+            message: err.message,
+            code: err.code
+        });
+        // In production, we want to keep trying to connect
+        if (process.env.NODE_ENV === 'production') {
+            console.log('Retrying connection in 5 seconds...');
+            setTimeout(connectDB, 5000);
+        } else {
+            throw err;
+        }
+    }
+};
+
+// Handle connection events
+mongoose.connection.on('connected', () => {
+    console.log('MongoDB connection established');
 });
+
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB connection disconnected');
+    if (process.env.NODE_ENV === 'production') {
+        console.log('Attempting to reconnect to MongoDB...');
+        setTimeout(connectDB, 5000);
+    }
+});
+
+mongoose.connection.on('error', (err) => {
+    console.error('MongoDB connection error:', err);
+    if (process.env.NODE_ENV === 'production') {
+        console.log('Attempting to reconnect to MongoDB...');
+        setTimeout(connectDB, 5000);
+    }
+});
+
+// Initial connection
+connectDB().catch(console.error);
 
 //creating schema
 const todoSchema = new mongoose.Schema({
