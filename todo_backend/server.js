@@ -17,7 +17,7 @@ const app = express();
 
 // CORS configuration
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'],
+    origin: '*',  // Allow all origins for Vercel deployment
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type']
 }));
@@ -38,17 +38,27 @@ app.use((err, req, res, next) => {
 // MongoDB Atlas connection URL
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ritishm07:ritishrockz@todolist.j7ghe.mongodb.net/todo-app?retryWrites=true&w=majority';
 
-console.log('Attempting to connect to MongoDB...');
+let cachedDb = null;
 
-// connecting mongodb with error handling
-mongoose.connect(MONGODB_URI)
-.then(() => {
-    console.log('Successfully connected to MongoDB Atlas.');
-})
-.catch((err) => {
-    console.error('Error connecting to MongoDB:', err);
-    process.exit(1);
-});
+// Function to connect to MongoDB
+async function connectToDatabase() {
+    if (cachedDb) {
+        return cachedDb;
+    }
+    
+    try {
+        const db = await mongoose.connect(MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true
+        });
+        
+        cachedDb = db;
+        return db;
+    } catch (error) {
+        console.error('MongoDB connection error:', error);
+        throw error;
+    }
+}
 
 //creating schema
 const todoSchema = new mongoose.Schema({
@@ -65,13 +75,19 @@ const todoSchema = new mongoose.Schema({
 const todoModel = mongoose.model('Todo', todoSchema);
 
 // Health check endpoint
-app.get('/', (req, res) => {
-    res.json({ message: 'Server is running' });
+app.get('/', async (req, res) => {
+    try {
+        await connectToDatabase();
+        res.json({ message: 'Server is running', status: 'connected' });
+    } catch (error) {
+        res.status(500).json({ message: 'Database connection error', error: error.message });
+    }
 });
 
 //Create a new todo item
 app.post('/todos', async (req, res) => {
     try {
+        await connectToDatabase();
         const {title, description} = req.body;
         
         if (!title || typeof title !== 'string') {
@@ -84,7 +100,6 @@ app.post('/todos', async (req, res) => {
         });
         
         const savedTodo = await newTodo.save();
-        console.log('Created todo:', savedTodo);
         res.status(201).json(savedTodo);
     } catch (error) {
         console.error('Error creating todo:', error);
@@ -95,6 +110,7 @@ app.post('/todos', async (req, res) => {
 //Get all items
 app.get('/todos', async (req, res) => {
     try {
+        await connectToDatabase();
         const todos = await todoModel.find().sort({ createdAt: -1 });
         res.json(todos);
     } catch (error) {
@@ -106,6 +122,7 @@ app.get('/todos', async (req, res) => {
 // Update a todo item
 app.put("/todos/:id", async (req, res) => {
     try {
+        await connectToDatabase();
         const {title, description} = req.body;
         const id = req.params.id;
         
@@ -132,6 +149,7 @@ app.put("/todos/:id", async (req, res) => {
 // Delete a todo item
 app.delete('/todos/:id', async (req, res) => {
     try {
+        await connectToDatabase();
         const id = req.params.id;
         const deletedTodo = await todoModel.findByIdAndDelete(id);
         if (!deletedTodo) {
@@ -158,12 +176,10 @@ app.use((req, res) => {
     res.status(404).json({ message: 'Route not found' });
 });
 
-//Start the server
-const port = process.env.PORT || 3001;
-
-// For Vercel, we only start the server if we're running locally
+// Only start the server if we're not in a Vercel environment
 if (process.env.NODE_ENV !== 'production') {
-    app.listen(port, '0.0.0.0', () => {
+    const port = process.env.PORT || 3001;
+    app.listen(port, () => {
         console.log("Server is listening to port " + port);
         console.log("Test the API at http://localhost:" + port);
     });
